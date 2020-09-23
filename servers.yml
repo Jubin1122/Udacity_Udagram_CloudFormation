@@ -96,13 +96,17 @@ Resources:
       SecurityGroups:
       - Ref: WebServerSecGroup
       InstanceType: t3.medium
-      IamInstanceProfile: !Ref RootInstanceProfile
+      IamInstanceProfile: 
+        Fn::ImportValue: !sub "${EnvironmentName}-ROOT_INST"
       BlockDeviceMappings:
       - DeviceName: "/dev/sdk"
         Ebs:
           VolumeSize: '10'
 
-    WebAppGroup:
+
+
+  # For the Autoscaling Group(Private Subnet)
+  WebAppGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
@@ -112,6 +116,72 @@ Resources:
         Ref: WebAppLaunchConfig
       MinSize: '3'
       MaxSize: '5'
+
+###################
+# Load Balancers
+###################
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+      - Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
+      - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
+      SecurityGroups:
+      - Ref: LBSecGroup
+
+  # Listener
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLB
+      Port: '80'
+      Protocol: HTTP
+  
+  #Listner Rule
+  ALBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+        - Type: forward
+          TargetGroupArn: !Ref 'WebAppTargetGroup'
+        Conditions:
+        - Field: path-pattern
+          Values: [/]
+        ListenerArn: !Ref 'Listener'
+        Priority: 1
+  # Target Group
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 8080
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+
+Outputs:
+  WALB:
+    Description: URL of web application
+    Value: !Join [ "", [ "http://", !GetAtt WebAppLB.DNSName ] ]
+
+  
+  
+
+
+
+
+      
     
     
 
